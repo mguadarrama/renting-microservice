@@ -17,7 +17,23 @@ namespace GtMotive.Estimate.Microservice.Api.Filters
 
             _appLogger.LogError(context.Exception, "Exception captured in BusinessExceptionFilter.");
 
-            if (context.Exception is DomainException)
+            if (context.Exception is ConflictException)
+            {
+                var problemDetails = new ProblemDetails
+                {
+                    Type = "https://tools.ietf.org/html/rfc7231#section-6.5.8",
+                    Status = StatusCodes.Status409Conflict,
+                    Title = "Conflict",
+                    Detail = context.Exception.Message,
+                    Instance = context.HttpContext.Request.Path,
+                };
+
+                _appLogger.LogWarning("Conflict Exception: {status} - {detail}", problemDetails.Status, problemDetails.Detail);
+
+                context.Result = new ConflictObjectResult(problemDetails);
+                context.Exception = null;
+            }
+            else if (context.Exception is DomainException)
             {
                 var problemDetails = new ProblemDetails
                 {
