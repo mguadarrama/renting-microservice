@@ -1,3 +1,74 @@
+# Vehicle renting microservice
+
+Implementation of the renting technical test on top of the provided hexagonal architecture template
+(the original template documentation follows below).
+
+Requirements, acceptance criteria and where each business rule is enforced: [docs/SPEC.md](docs/SPEC.md).
+
+## Run it
+
+Requires only Docker:
+
+```
+docker compose up --build
+```
+
+Swagger UI: http://localhost:8080/swagger
+
+| Method | Route | Use case | Responses |
+|---|---|---|---|
+| POST | `/api/vehicles` | Add a vehicle to the fleet | 201, 400 (invalid / older than 5 years), 409 (plate exists) |
+| GET | `/api/vehicles/available` | List vehicles that can be rented now | 200 |
+| POST | `/api/vehicles/{id}/rental` | Rent a vehicle (`{ "customerId": "..." }`) | 200, 400, 404, 409 (vehicle rented / customer already renting) |
+| DELETE | `/api/vehicles/{id}/rental` | Return a vehicle | 200, 404, 409 (not rented) |
+
+## Tests
+
+```
+docker compose up -d mongo      # functional tests use this MongoDB
+dotnet test src/microservice.sln
+```
+
+- **Unit** (`test/unit`): use cases with mocked dependencies (Moq), including both business rules.
+- **Infrastructure** (`test/infrastructure`): host level only, TestServer + model validation.
+- **Functional** (`test/functional`): MediatR handlers through the real composition root and MongoDB, without the host.
+
+## Design notes
+
+- **Business rules live in the domain.** `Vehicle` (aggregate root) enforces the 5-year age limit on creation and on rent,
+  and the rental lifecycle (cannot rent twice, cannot return if not rented). "One vehicle per customer" spans several
+  aggregates, so the use case checks it through the repository.
+- **The database also enforces both uniqueness rules**: a unique index on the license plate and a partial unique index on
+  `RentedBy` (only rented vehicles), so two concurrent requests cannot break them. Updates use an optimistic concurrency
+  version, so two customers cannot rent the same vehicle at the same time.
+- **Unit of Work**: repositories stage writes and `IUnitOfWork.Save()` applies them. Each use case writes one document, so
+  MongoDB single-document atomicity is enough (no replica set or multi-document transaction needed).
+- **Errors**: value object validation and the age rule are `DomainException` (400, via the template's `BusinessExceptionFilter`);
+  state conflicts are `ConflictException` (409) and are reported through the output ports.
+- **Time** comes from `TimeProvider`, so rules depending on "now" are deterministic in tests.
+- **Vehicles that age out** after being added are excluded from the available list and cannot be rented.
+
+## How this was built
+
+I used Claude Code as an AI pair programmer during development. In the interview I can walk through how I used it
+and the reasoning behind each design decision.
+
+## Changes to the template
+
+The template did not build or run out of the box; these are the only changes to its files:
+
+- `NuGet.config`: `<clear />` so only nuget.org is used regardless of the machine's NuGet sources.
+- Removed the unused `AutoMapper` 14.0.0 reference: it has a known high severity vulnerability (GHSA-rvv3-g6hj-g44x),
+  which fails restore because warnings are errors.
+- `Microsoft.AspNetCore.TestHost` 6.0.0 → 9.0.3: version 6 cannot write responses on .NET 9.
+- Unit test project: added `GenerateDocumentationFile`, required by the analyzers (IDE0005).
+- Test fixtures/base classes made `public` (xUnit requires public test classes) with a CA1515 suppression.
+- `Dockerfile`: no private Azure DevOps feed, and SDK 9.0.200 to match `global.json`.
+- Authentication setup is kept as delivered; the endpoints are not marked `[Authorize]` so they can be tried locally
+  without the identity server.
+
+---
+
 # Sample Implementation of Hexagonal Architecture in a Microservice
 ## Index
 ### [Introduction](#introduction)
