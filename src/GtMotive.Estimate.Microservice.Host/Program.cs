@@ -65,7 +65,8 @@ builder.Services.Configure<MongoDbSettings>(builder.Configuration.GetSection("Mo
 builder.Services.AddControllers(ApiConfiguration.ConfigureControllers)
     .WithApiControllers();
 
-builder.Services.AddBaseInfrastructure(builder.Environment.IsDevelopment());
+builder.Services.AddBaseInfrastructure(builder.Environment.IsDevelopment())
+    .AddMongoPersistence();
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
